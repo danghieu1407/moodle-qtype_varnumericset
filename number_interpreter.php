@@ -14,6 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+/**
+ * Defines the number interpreter classes for the variable numeric question type.
+ * @package qtype_varnumericset
+ * @copyright 2025 The Open University
+ * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 defined('MOODLE_INTERNAL') || die();
 
 define('QTYPE_VARNUMERICSET_THOUSAND_SEP', ',');
@@ -31,7 +38,14 @@ define('QTYPE_VARNUMERICSET_DECIMAL_SEP', '.');
  */
 abstract class qtype_varnumericset_number_interpreter_base {
 
+    /**
+     * @var string This is the part of the number that is not matched, i.e. anything before the matched part.
+     */
     protected $prefix;
+
+    /**
+     * @var string This is the part of the number that is normalised, i.e. stripped of any formatting.
+     */
     protected $postfix;
 
     // Public methods.
@@ -64,10 +78,25 @@ abstract class qtype_varnumericset_number_interpreter_base {
 
 }
 
+/**
+ * Base class for number interpreters that use preg patterns to match parts of the number.
+ *
+ * This class provides a common implementation for matching patterns and extracting parts
+ * from the matches. It is intended to be extended by specific number interpreters that
+ * define their own patterns.
+ *
+ * @package qtype_varnumericset
+ */
 abstract class qtype_varnumericset_number_interpreter_part_using_preg_pattern extends
-                qtype_varnumericset_number_interpreter_base {
+    qtype_varnumericset_number_interpreter_base {
     abstract protected function pattern();
 
+    /**
+     * Match the pattern against the string and extract the parts.
+     *
+     * @param string $string The string to match against.
+     * @return bool True if the pattern matches, false otherwise.
+     */
     protected function match_pattern($string) {
         $string = $string ?? '';
         $matches = [];
@@ -84,6 +113,12 @@ abstract class qtype_varnumericset_number_interpreter_part_using_preg_pattern ex
         }
     }
 
+    /**
+     * Extract a part from the preg match and set it as a property of the class.
+     *
+     * @param array $matches from the preg expression
+     * @param string $part The part to extract.
+     */
     protected function extract_part($matches, $part) {
         if (isset($matches[$part])) {
             $this->$part = $matches[$part][0];
@@ -103,12 +138,24 @@ abstract class qtype_varnumericset_number_interpreter_part_using_preg_pattern ex
         }
     }
 
+    /**
+     * Parts to extract from the preg match.
+     *
+     * @return array
+     */
     protected function parts_to_extract() {
         return ['sign'];
     }
 
+    /**
+     * @var string
+     */
     protected $sign;
 
+    /**
+     * Get the sign of the number.
+     * @return string The sign of the number, either '-' or ''.
+     */
     protected function get_normalised_sign() {
         if ($this->sign === '-') {
             return '-';
@@ -117,8 +164,7 @@ abstract class qtype_varnumericset_number_interpreter_part_using_preg_pattern ex
         }
     }
 
-    // Public methods.
-
+    #[\Override]
     public function match($string) {
         return $this->match_pattern($string);
     }
@@ -127,42 +173,74 @@ abstract class qtype_varnumericset_number_interpreter_part_using_preg_pattern ex
 
 /**
  * Floating point number with or without sign and decimal point
+ * @package qtype_varnumericset
  */
 class qtype_varnumericset_number_interpreter_number_with_optional_decimal_place extends
     qtype_varnumericset_number_interpreter_part_using_preg_pattern {
 
+    #[\Override]
     protected function pattern() {
         $thousandsep = preg_quote(QTYPE_VARNUMERICSET_THOUSAND_SEP, '!');
         $decsep = preg_quote(QTYPE_VARNUMERICSET_DECIMAL_SEP, '!');
         return '!(?<sign>[+-]?)\s*'.
-                '(?<predecpoint>[0-9][0-9'.$thousandsep.']*)?'.
-                '(\s*'.$decsep.'\s*(?<postdecpoint>[0-9]*))?!i';
+            '(?<predecpoint>[0-9][0-9'.$thousandsep.']*)?'.
+            '(\s*'.$decsep.'\s*(?<postdecpoint>[0-9]*))?!i';
     }
 
+    /**
+     * Parts to extract from the preg match.
+     *
+     * @return array
+     */
     protected function parts_to_extract() {
         return array_merge(parent::parts_to_extract(), ['predecpoint', 'postdecpoint']);
     }
 
+    /**
+     * @var string
+     */
     protected $predecpoint;
 
+    /**
+     * @var string
+     */
     protected $postdecpoint;
 
+    /**
+     * Set the value of the number.
+     *
+     * @param string $value The value to set, can be a string representation of a number.
+     */
     public function get_pre_dec_point() {
         return str_replace(QTYPE_VARNUMERICSET_THOUSAND_SEP, '', $this->predecpoint);
     }
 
+    /**
+     * Get the part of the number before the decimal point.
+     *
+     * @param string $predecpoint The part of the number before the decimal point.
+     */
     public function set_pre_dec_point($predecpoint) {
         $this->predecpoint = $predecpoint;
     }
 
+    /**
+     * Get the part of the number after the decimal point.
+     */
     public function get_post_dec_point() {
         return $this->postdecpoint;
     }
 
+    /**
+     * Set the part of the number after the decimal point.
+     *
+     * @param string $postdecpoint The part of the number after the decimal point.
+     */
     public function set_post_dec_point($postdecpoint) {
         $this->postdecpoint = $postdecpoint;
     }
 
+    #[\Override]
     public function get_normalised() {
         $normalised = $this->get_pre_dec_point();
 
@@ -185,6 +263,7 @@ class qtype_varnumericset_number_interpreter_number_with_optional_decimal_place 
         return $normalised;
     }
 
+    #[\Override]
     protected function match_pattern($string) {
         $result = parent::match_pattern($string);
         if ($result && $this->predecpoint === '' && $this->postdecpoint === '') {
@@ -198,16 +277,26 @@ class qtype_varnumericset_number_interpreter_number_with_optional_decimal_place 
 /**
  * Exponent part of number in scientific notation, expected to follow immediately after
  * @link qtype_varnumericset_number_interpreter_number_with_optional_decimal_place
+ * @package qtype_varnumericset
  */
 abstract class qtype_varnumericset_number_interpreter_exponent_following_float_base extends
     qtype_varnumericset_number_interpreter_part_using_preg_pattern {
 
+    /**
+     * @var string
+     */
+    protected $exp;
+
+    #[\Override]
     protected function parts_to_extract() {
         return array_merge(parent::parts_to_extract(), ['exp']);
     }
 
-    protected $exp;
-
+    /**
+     * Set the exponent value.
+     *
+     * @param int $exponent The exponent value to set. If negative, the sign will be set to '-'.
+     */
     public function set_value($exponent) {
         if ($exponent < 0) {
             $this->sign = '-';
@@ -217,6 +306,11 @@ abstract class qtype_varnumericset_number_interpreter_exponent_following_float_b
         $this->exp = abs($exponent);
     }
 
+    /**
+     * Get the exponent value as an integer.
+     *
+     * @return int The exponent value, or 0 if the exponent is 0.
+     */
     public function get_value() {
         if ($this->exp != 0) {
             return (int)($this->get_normalised_sign().$this->exp);
@@ -225,14 +319,21 @@ abstract class qtype_varnumericset_number_interpreter_exponent_following_float_b
         }
     }
 
+    #[\Override]
     public function get_normalised() {
         return 'e'.$this->get_normalised_sign().$this->exp;
     }
 }
 
+/**
+ * Exponent part of number in scientific notation, expected to follow immediately after.
+ * @link qtype_varnumericset_number_interpreter_number_with_optional_decimal_place
+ * @package qtype_varnumericset
+ */
 class qtype_varnumericset_number_interpreter_nonhtml_exponent_following_float extends
     qtype_varnumericset_number_interpreter_exponent_following_float_base {
 
+    #[\Override]
     protected function pattern() {
         return '!\s*e\s*'.
             '(?<sign>[+-]?)\s*'.
@@ -243,10 +344,12 @@ class qtype_varnumericset_number_interpreter_nonhtml_exponent_following_float ex
 /**
  * Exponent part of number in scientific notation, expected to follow immediately after
  * @link qtype_varnumericset_number_interpreter_number_with_optional_decimal_place
+ * @package qtype_varnumericset
  */
 class qtype_varnumericset_number_interpreter_html_exponent_following_float extends
     qtype_varnumericset_number_interpreter_exponent_following_float_base {
 
+    #[\Override]
     protected function pattern() {
         return '!\s*[\*x×]\s*10\s*'.
             '<sup>\s*'.
@@ -259,6 +362,8 @@ class qtype_varnumericset_number_interpreter_html_exponent_following_float exten
 
 /**
  * Main matching class to match numbers accepted in student response.
+ *
+ * @package qtype_varnumericset
  */
 class qtype_varnumericset_number_interpreter_number_with_optional_sci_notation extends
     qtype_varnumericset_number_interpreter_base {
@@ -268,12 +373,19 @@ class qtype_varnumericset_number_interpreter_number_with_optional_sci_notation e
      */
     protected $accepthtml;
 
+    /**
+     * @var string
+     */
     protected $normalised;
 
+    /**
+     * Constructor.
+     */
     public function __construct($accepthtml) {
         $this->accepthtml = $accepthtml;
     }
 
+    #[\Override]
     public function match($string) {
         $num = new qtype_varnumericset_number_interpreter_number_with_optional_decimal_place();
         if ($this->accepthtml) {
@@ -330,6 +442,7 @@ class qtype_varnumericset_number_interpreter_number_with_optional_sci_notation e
         $exp->set_value($exponent);
     }
 
+    #[\Override]
     public function get_normalised() {
         return $this->normalised;
     }
